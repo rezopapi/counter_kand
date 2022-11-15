@@ -1,0 +1,100 @@
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: counter-backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: counter-backend
+  template:
+    metadata:
+      labels: 
+        app: counter-backend
+    spec:
+      containers:
+        - name: counter-database
+          image: ghcr.io/rezopapi/counter-backend:v1
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+          env:
+            - name: npm_config_cache
+              value: ./.npm-cache
+            - name: NODE_ENV
+              value: production
+            - name: DB_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: counter-database
+                  key: db_host
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: counter-database
+                  key: database-user
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: counter-database
+                  key: database-password
+            - name: DB_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: counter-database
+                  key: database-name
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: counter-database
+data:
+  db_host: counter-database
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: counter-backend
+spec:
+  selector:
+    app: counter-backend
+  ports:
+    - name: tcp-port
+      protocol: TCP
+      port: 8080
+      targetPort: 8080
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: counter-backend
+  labels: 
+    app: counter-backend
+spec:
+  port:
+    targetPort: tcp-port
+  to:
+    kind: Service
+    name: counter-backend
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: counter-backend
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: counter-backend
+  minReplicas: 2
+  maxReplicas: 2
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 80
